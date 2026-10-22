@@ -18,12 +18,21 @@ RUN set -eux; \
     kubectl version --client
 
 FROM python:3.13-slim
+# eMudhra CA compromise (20 Oct 26): eight eMudhra intermediate keys are
+# derivable from their certificates. Take the distro's fixed ca-certificates
+# even when the base image predates it.
+RUN apt-get update && apt-get install -y --no-install-recommends --only-upgrade ca-certificates \
+    && rm -rf /var/lib/apt/lists/*
 COPY --from=build /install /usr/local
 COPY --from=tools /usr/local/bin/kubectl /usr/local/bin/kubectl
 COPY kubectlmcp/ /srv/kubectlmcp/
 WORKDIR /srv
 # HOME must be writable: kubectl writes a discovery cache under it.
 ENV HOME=/tmp PORT=8080 PYTHONUNBUFFERED=1
+# certifi >= 2026.10.19 drops the compromised roots; requests/httpx use it,
+# not the OS store.
+RUN pip install --no-cache-dir -U "certifi>=2026.10.19"
+
 USER 65534
 EXPOSE 8080
 CMD ["python", "-m", "kubectlmcp.server"]
